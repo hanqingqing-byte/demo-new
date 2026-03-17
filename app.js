@@ -31,6 +31,7 @@ document.addEventListener("drop", handleDrop);
 document.addEventListener("dragenter", handleDragEnter);
 document.addEventListener("dragleave", handleDragLeave);
 document.addEventListener("scroll", handleScroll, true);
+document.addEventListener("pointerdown", handlePointerDown);
 
 render();
 
@@ -829,6 +830,7 @@ async function createDemo() {
   ui.loading = false;
   ui.modal = { type: "created", demoId: demo.id };
   ui.draft = createEmptyDraft();
+  showDelightToast("created");
   render();
 }
 
@@ -858,7 +860,7 @@ function submitFeedback(formData, demoId) {
   }
   ui.feedbackDrafts[demoId] = createEmptyFeedbackDraft();
   saveState();
-  showToast("反馈已提交。");
+  showDelightToast("feedback");
   render();
 }
 
@@ -882,7 +884,7 @@ async function copyShareLink(demoId) {
   const link = getShareLink(demoId);
   try {
     await navigator.clipboard.writeText(link);
-    showToast("分享链接已复制。");
+    showDelightToast("copied");
   } catch {
     window.prompt("复制下面这个链接", link);
   }
@@ -939,6 +941,16 @@ function showToast(message) {
     ui.toast = null;
     render();
   }, TOAST_MS);
+}
+
+function showDelightToast(kind) {
+  const messages = {
+    created: ["链接已生成，可直接分享", "发布成功，已生成分享地址", "新 Demo 已就绪"],
+    copied: ["分享链接已复制", "链接复制完成", "已复制，可直接发送"],
+    feedback: ["反馈已提交", "收到你的建议", "建议已同步到后台"],
+  };
+  const list = messages[kind] || [kind];
+  showToast(list[Math.floor(Math.random() * list.length)]);
 }
 
 function escapeHtml(value) {
@@ -1009,6 +1021,20 @@ function detectDeviceName() {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function handlePointerDown(event) {
+  const button = event.target.closest(".button");
+  if (!button || button.disabled) {
+    return;
+  }
+  const rect = button.getBoundingClientRect();
+  const ripple = document.createElement("span");
+  ripple.className = "ripple";
+  ripple.style.left = `${event.clientX - rect.left}px`;
+  ripple.style.top = `${event.clientY - rect.top}px`;
+  button.appendChild(ripple);
+  window.setTimeout(() => ripple.remove(), 700);
 }
 
 function syncGalleryProgress() {
