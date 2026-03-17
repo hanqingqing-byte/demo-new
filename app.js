@@ -13,9 +13,11 @@ const ui = {
   dragIndex: null,
   galleryIndex: 0,
   galleryScrollLeft: 0,
+  mobileSchemeScrollLeft: 0,
   lastRouteKey: "",
   pageEnter: true,
   uploadDragover: false,
+  mobileFeedbackOpen: false,
 };
 
 const state = loadState();
@@ -72,7 +74,12 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function seedIfNeeded(current) {
@@ -235,6 +242,7 @@ function render() {
     ui.galleryIndex = clamp(ui.galleryIndex, 0, Math.max(getDemo(route.id)?.images.length - 1 || 0, 0));
   } else {
     ui.galleryIndex = 0;
+    ui.mobileFeedbackOpen = false;
   }
 
   app.innerHTML = `
@@ -246,6 +254,7 @@ function render() {
     ${renderToast()}
   `;
   syncGalleryProgress();
+  syncMobileSchemeScroll();
 }
 
 function pageClass(extra = "") {
@@ -459,12 +468,13 @@ function renderSharePage(demoId) {
     return renderMissing("这个 Demo 不存在，可能已经被删除。");
   }
   const feedbackDraft = getFeedbackDraft(demo.id);
+  const canSubmitFeedback = feedbackDraft.mis.trim() && feedbackDraft.text.trim();
 
   const gallery = demo.images.length ? demo.images : [makeSampleImage("00", "#efefef", "#dfdfdf")];
   const progressWidth = `${((ui.galleryIndex + 1) / gallery.length) * 100}%`;
 
   return `
-    <main class="${pageClass("stack-28")}">
+    <main class="${pageClass("stack-28 share-page")}">
       <div class="share-topbar">
         ${renderBrand()}
       </div>
@@ -493,6 +503,25 @@ function renderSharePage(demoId) {
         <div class="gallery-progress" data-gallery-progress><span style="width: ${progressWidth};"></span></div>
       </section>
 
+      <section class="mobile-scheme-stage">
+        <div class="mobile-scheme-scroll" data-mobile-scheme-scroll>
+        ${gallery
+          .map((image, index) => {
+            const serial = String(index + 1).padStart(2, "0");
+            return `
+              <article class="mobile-scheme-frame">
+                <button class="mobile-scheme-btn" data-action="open-image" data-src="${escapeAttr(image)}" data-alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图">
+                  <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图" />
+                  <span class="gallery-seq-badge">${serial}</span>
+                </button>
+              </article>
+            `;
+          })
+          .join("")}
+        </div>
+        <div class="mobile-scheme-indicator">方案${ui.galleryIndex + 1}/${gallery.length}</div>
+      </section>
+
       <form class="feedback-form share-feedback-form" id="feedback-form" data-demo-id="${escapeAttr(demo.id)}">
         <h2 class="panel-title">请提交你的建议：</h2>
         <div class="field">
@@ -505,9 +534,33 @@ function renderSharePage(demoId) {
         </div>
         <div class="form-actions">
           <div class="helper-text">建议会立即回收到设计师后台，不会出现在公开页上。</div>
-          <button class="button button-primary" type="submit">提交反馈</button>
+          <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
         </div>
       </form>
+
+      <button class="mobile-feedback-fab" data-action="toggle-mobile-feedback" aria-label="打开反馈面板">
+        ${renderIcon("feedback-fab")}
+      </button>
+
+      <div class="mobile-feedback-backdrop ${ui.mobileFeedbackOpen ? "is-open" : ""}" data-action="close-mobile-feedback">
+        <div class="mobile-feedback-sheet ${ui.mobileFeedbackOpen ? "is-open" : ""}">
+          <form class="feedback-form mobile-feedback-form" id="mobile-feedback-form" data-demo-id="${escapeAttr(demo.id)}">
+            <button class="mobile-sheet-close" type="button" data-action="close-mobile-feedback" aria-label="关闭反馈面板">${renderIcon("close")}</button>
+            <h2 class="panel-title">请提交你的建议：</h2>
+            <div class="field">
+              <label for="mobile-mis-input">MIS号</label>
+              <input class="input" id="mobile-mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" />
+            </div>
+            <div class="field">
+              <label for="mobile-feedback-text">反馈内容</label>
+              <textarea class="textarea" id="mobile-feedback-text" name="text" placeholder="请写下你的建议、疑问或感受">${escapeHtml(feedbackDraft.text)}</textarea>
+            </div>
+            <div class="form-actions">
+              <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </main>
   `;
 }
@@ -784,13 +837,28 @@ function handleClick(event) {
   if (action === "close-lightbox") {
     ui.lightbox = null;
     render();
+    return;
+  }
+  if (action === "toggle-mobile-feedback") {
+    ui.mobileFeedbackOpen = !ui.mobileFeedbackOpen;
+    render();
+    return;
+  }
+  if (action === "close-mobile-feedback") {
+    if (event.target.closest(".mobile-feedback-sheet") && !trigger.classList.contains("mobile-sheet-close")) {
+      return;
+    }
+    ui.mobileFeedbackOpen = false;
+    render();
   }
 }
 
 function handleSubmit(event) {
-  if (event.target.id === "feedback-form") {
+  if (event.target.id === "feedback-form" || event.target.id === "mobile-feedback-form") {
     event.preventDefault();
-    submitFeedback(new FormData(event.target), event.target.dataset.demoId);
+    const source = event.target.id === "mobile-feedback-form" ? "mobile" : "desktop";
+    submitFeedback(new FormData(event.target), event.target.dataset.demoId, source);
+    ui.mobileFeedbackOpen = false;
   }
 }
 
@@ -804,7 +872,7 @@ function handleInput(event) {
     return;
   }
   if (["mis", "text"].includes(target.name)) {
-    const form = target.closest("#feedback-form");
+    const form = target.closest("form[data-demo-id]");
     if (!form) {
       return;
     }
@@ -859,11 +927,26 @@ function handleDragLeave(event) {
 
 function handleScroll(event) {
   const scroller = event.target.closest?.("[data-gallery-scroll]");
-  if (!scroller) {
+  if (scroller) {
+    ui.galleryScrollLeft = scroller.scrollLeft;
+    syncGalleryProgress();
     return;
   }
-  ui.galleryScrollLeft = scroller.scrollLeft;
-  syncGalleryProgress();
+  const mobileScroller = event.target.closest?.("[data-mobile-scheme-scroll]");
+  if (!mobileScroller) {
+    return;
+  }
+  ui.mobileSchemeScrollLeft = mobileScroller.scrollLeft;
+  const pageWidth = mobileScroller.clientWidth || 1;
+  ui.galleryIndex = clamp(
+    Math.round(mobileScroller.scrollLeft / pageWidth),
+    0,
+    Math.max(mobileScroller.children.length - 1, 0)
+  );
+  const indicator = document.querySelector(".mobile-scheme-indicator");
+  if (indicator) {
+    indicator.textContent = `方案${ui.galleryIndex + 1}/${mobileScroller.children.length}`;
+  }
 }
 
 async function handleDrop(event) {
@@ -955,7 +1038,7 @@ async function createDemo() {
   render();
 }
 
-function submitFeedback(formData, demoId) {
+function submitFeedback(formData, demoId, source = "desktop") {
   const mis = String(formData.get("mis") || "").trim();
   const text = String(formData.get("text") || "").trim();
   if (!mis || !text) {
@@ -980,8 +1063,12 @@ function submitFeedback(formData, demoId) {
     demo.updatedAt = feedback.createdAt;
   }
   ui.feedbackDrafts[demoId] = createEmptyFeedbackDraft();
-  saveState();
-  showDelightToast("feedback");
+  const persisted = saveState();
+  if (!persisted) {
+    showToast("本地存储已满，反馈已暂存当前页面。请先清理旧 Demo。");
+  } else {
+    showToast(source === "mobile" ? "提交成功" : "反馈已提交");
+  }
   render();
 }
 
@@ -1178,12 +1265,31 @@ function syncGalleryProgress() {
   thumb.style.transform = `translateX(${x}px)`;
 }
 
+function syncMobileSchemeScroll() {
+  const scroller = document.querySelector("[data-mobile-scheme-scroll]");
+  if (!scroller) {
+    return;
+  }
+  const pageWidth = scroller.clientWidth || 1;
+  const targetLeft = ui.galleryIndex * pageWidth;
+  if (Math.abs(scroller.scrollLeft - targetLeft) > 2) {
+    scroller.scrollLeft = ui.mobileSchemeScrollLeft > 0 ? ui.mobileSchemeScrollLeft : targetLeft;
+  }
+  const total = scroller.children.length || 1;
+  const indicator = document.querySelector(".mobile-scheme-indicator");
+  if (indicator) {
+    indicator.textContent = `方案${clamp(ui.galleryIndex + 1, 1, total)}/${total}`;
+  }
+}
+
 function renderIcon(name) {
   const icons = {
     plus: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg>',
     upload: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3.75M5.25 6.5 8 3.75l2.75 2.75M3.5 12.5h9" /></svg>',
     "upload-board":
       '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M962.5 773.125l-119.375 0 0-119.375c0-16.25-13.125-29.375-29.375-29.375-16.25 0-29.375 13.125-29.375 29.375l0 119.375-119.375 0c-16.25 0-29.375 13.125-29.375 29.375 0 16.25 13.125 29.375 29.375 29.375l119.375 0 0 119.375c0 16.25 13.125 29.375 29.375 29.375 16.25 0 29.375-13.125 29.375-29.375l0-119.375L962.5 831.875c16.25 0 29.375-13.125 29.375-29.375C991.875 786.25 978.75 773.125 962.5 773.125zM699.375 288.125c0-67.5-55-122.5-122.5-122.5-67.5 0-122.5 55-122.5 122.5s55 122.5 122.5 122.5C644.375 410.625 699.375 355.625 699.375 288.125zM508.75 288.125c0-37.5 30.625-68.125 68.125-68.125 37.5 0 68.125 30.625 68.125 68.125 0 37.5-30.625 68.125-68.125 68.125C539.375 356.25 508.75 325.625 508.75 288.125zM743.125 873.125 182.5 873.125c-30 0-54.375-24.375-54.375-54.375L128.125 166.25c0-30 24.375-54.375 54.375-54.375l653.125 0c30 0 54.375 24.375 54.375 54.375l0 566.875 54.375 0 0-566.875c0-60-48.75-108.75-108.75-108.75L182.5 57.5c-60 0-108.75 48.75-108.75 108.75L73.75 818.75c0 60 48.75 108.75 108.75 108.75l560.625 0L743.125 873.125 743.125 873.125zM793.125 569.375c5 3.125 10 4.375 15 4.375 8.75 0 17.5-4.375 22.5-11.875 8.125-12.5 5-29.375-7.5-37.5l-81.875-54.375c-10-6.875-23.125-5.625-31.875 1.875l0-0.625L580 575 388.125 442.5c0 0 0 0 0 0-2.5-1.25-5-2.5-7.5-3.125-0.625 0-1.875-0.625-2.5-1.25-2.5-0.625-5 0-6.875 0-1.25 0-2.5 0-3.125 0-1.25 0-2.5 1.25-3.125 1.25-2.5 0.625-4.375 1.25-6.25 2.5 0 0 0 0 0 0L194.375 551.25c-12.5 8.125-15.625 25-7.5 37.5 5 8.125 13.75 11.875 22.5 11.875 5 0 10.625-1.25 15-4.375l148.125-98.75 287.5 196.25c5 3.125 10 5 15.625 5 8.75 0 16.875-4.375 22.5-11.875 8.75-12.5 5.625-29.375-6.875-38.125l-63.75-43.125 101.25-80.625L793.125 569.375z" /></svg>',
+    "feedback-fab":
+      '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M579.887407 446.994963a32.274963 32.274963 0 0 1 0-45.511111l268.894815-268.894815c12.515556-12.515556 32.995556-12.515556 45.511111 0 12.515556 12.515556 12.515556 32.616296 0 45.131852l-268.894814 269.274074c-12.515556 12.515556-32.995556 12.515556-45.511112 0zM307.579259 319.981037a32.237037 32.237037 0 0 0-32.237037 32.237037c0 17.445926 14.411852 31.857778 32.237037 31.857778h191.146667a32.047407 32.047407 0 0 0 0-64.094815h-191.146667z m0 320.208593h409.220741a32.047407 32.047407 0 0 0 0-64.094815H307.541333a32.237037 32.237037 0 0 0-32.237037 32.237037c0 17.445926 14.411852 31.857778 32.237037 31.857778zM947.730963 90.642963c10.24 5.688889 22.376296 5.688889 32.237037 0 10.24-5.688889 16.308148-16.308148 16.308148-27.685926 0-11.757037-6.068148-22.376296-16.308148-28.065185a32.57837 32.57837 0 0 0-32.237037 0c-9.860741 5.688889-15.928889 16.308148-15.928889 28.065185 0 11.377778 6.068148 21.997037 15.928889 27.685926z" /><path d="M222.01837 894.748444c-34.891852 0-63.715556-28.823704-63.715555-64.094814V191.981037c0-35.271111 28.823704-64.094815 63.715555-64.094815h482.417778a32.047407 32.047407 0 0 0-0.379259-64.094815h-477.866667c-70.542222 0-128.18963 57.647407-128.189629 128.18963v639.431111c0 70.542222 57.647407 128.18963 128.189629 128.18963h573.819259c70.542222 0 97.848889-57.647407 97.848889-128.18963v-444.871111c0.379259-0.758519 0.379259-1.517037 0.37926-2.275556a32.237037 32.237037 0 1 0-64.474074 0h-0.37926v446.388149c0 35.271111-28.823704 64.094815-64.094815 64.094814H222.01837z" /></svg>',
     close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg>',
     trash:
       '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M800 384C782.08 384 768 398.08 768 416L768 832c0 35.2-28.8 64-64 64l-64 0L640 416C640 398.08 625.92 384 608 384 590.08 384 576 398.08 576 416L576 896 448 896 448 416C448 398.08 433.92 384 416 384 398.08 384 384 398.08 384 416L384 896 320 896c-35.2 0-64-28.8-64-64L256 416C256 398.08 241.92 384 224 384 206.08 384 192 398.08 192 416L192 832c0 70.4 57.6 128 128 128l384 0c70.4 0 128-57.6 128-128L832 416C832 398.08 817.92 384 800 384zM864 256l-704 0C142.08 256 128 270.08 128 288 128 305.92 142.08 320 160 320l704 0C881.92 320 896 305.92 896 288 896 270.08 881.92 256 864 256zM352 192l320 0C689.92 192 704 177.92 704 160 704 142.08 689.92 128 672 128l-320 0C334.08 128 320 142.08 320 160 320 177.92 334.08 192 352 192z" /></svg>',
