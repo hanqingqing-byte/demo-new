@@ -7,16 +7,20 @@ const ui = {
   draft: createEmptyDraft(),
   feedbackDrafts: {},
   modal: null,
+  lightbox: null,
   toast: null,
   loading: false,
   dragIndex: null,
   galleryIndex: 0,
   galleryScrollLeft: 0,
+  lastRouteKey: "",
+  pageEnter: true,
   uploadDragover: false,
 };
 
 const state = loadState();
 seedIfNeeded(state);
+normalizeSampleImages(state);
 saveState();
 
 window.addEventListener("hashchange", render);
@@ -156,6 +160,31 @@ function seedIfNeeded(current) {
   );
 }
 
+function normalizeSampleImages(current) {
+  current.demos.forEach((demo) => {
+    demo.images = (demo.images || []).map((image) => stripSampleLabel(image));
+  });
+}
+
+function stripSampleLabel(dataUrl) {
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/svg+xml")) {
+    return dataUrl;
+  }
+  const marker = "<text x=\"480\" y=\"610\"";
+  if (!dataUrl.includes(marker)) {
+    return dataUrl;
+  }
+  try {
+    const prefix = "data:image/svg+xml;charset=UTF-8,";
+    const encoded = dataUrl.startsWith(prefix) ? dataUrl.slice(prefix.length) : dataUrl.split(",")[1] || "";
+    const decoded = decodeURIComponent(encoded);
+    const stripped = decoded.replace(/<text[\s\S]*?<\/text>/g, "");
+    return `${prefix}${encodeURIComponent(stripped)}`;
+  } catch {
+    return dataUrl;
+  }
+}
+
 function makeSampleImage(label, start, end) {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
@@ -199,6 +228,9 @@ function getRoute() {
 
 function render() {
   const route = getRoute();
+  const routeKey = `${route.name}:${route.id || ""}`;
+  ui.pageEnter = ui.lastRouteKey !== routeKey;
+  ui.lastRouteKey = routeKey;
   if (route.name === "share") {
     ui.galleryIndex = clamp(ui.galleryIndex, 0, Math.max(getDemo(route.id)?.images.length - 1 || 0, 0));
   } else {
@@ -210,9 +242,14 @@ function render() {
       ${renderPage(route)}
     </div>
     ${renderModal()}
+    ${renderLightbox()}
     ${renderToast()}
   `;
   syncGalleryProgress();
+}
+
+function pageClass(extra = "") {
+  return `page ${extra} ${ui.pageEnter ? "page-enter" : ""}`.trim();
 }
 
 function renderPage(route) {
@@ -235,7 +272,7 @@ function renderDashboard() {
   }).length;
 
   return `
-    <main class="page stack-24">
+    <main class="${pageClass("stack-24")}">
       <div class="topbar">
         ${renderBrand()}
         <button class="button button-primary button-large" data-action="go-new">${renderIcon("plus")}创建Demo</button>
@@ -245,7 +282,6 @@ function renderDashboard() {
         <div class="section-head">
           <div>
             <h1 class="hero-headline">反馈管理</h1>
-            <p class="hero-subtitle">其中包含设计师 Demo 的状态总览、图片管理与分享反馈流。</p>
           </div>
         </div>
         <div class="stats-grid">
@@ -264,7 +300,6 @@ function renderDashboard() {
         <div class="section-head">
           <div>
             <h2 class="section-title">我的 Demo</h2>
-            <p class="section-desc">按反馈处理阶段聚合，优先关注待补素材与待确认的页面。</p>
           </div>
         </div>
         ${
@@ -284,26 +319,19 @@ function renderDashboard() {
 
 function renderDemoCard(demo) {
   const unreadCount = getFeedbackForDemo(demo.id).filter((item) => item.isNew).length;
-  const preview = demo.images[0];
 
   return `
-    <article class="demo-card">
-      <div class="preview-shell">
-        ${
-          preview
-            ? `<img src="${escapeAttr(preview)}" alt="${escapeAttr(demo.title)} 预览" />`
-            : `<div class="preview-placeholder"><span></span><span></span><span></span><span></span><span></span></div>`
-        }
-      </div>
+    <article class="demo-card" data-action="open-feedback" data-demo-id="${escapeAttr(demo.id)}">
+      ${renderDemoPreview(demo)}
 
       <div class="demo-info">
-        <div class="stack-24" style="gap: 12px;">
+        <div class="demo-copy">
           <div class="card-top">
             <div>
               <h3 class="demo-title">${escapeHtml(demo.title)}</h3>
               <p class="card-meta">关联模块：${escapeHtml(demo.module || "未填写")}</p>
             </div>
-            <button class="button button-ghost button-icon" title="删除 Demo" data-action="delete-demo" data-demo-id="${escapeAttr(demo.id)}">${renderIcon("trash")}</button>
+            <button class="button button-ghost button-icon delete-icon-btn" title="删除 Demo" data-action="delete-demo" data-demo-id="${escapeAttr(demo.id)}">${renderIcon("trash")}</button>
           </div>
           <p class="demo-description">${escapeHtml(demo.description || "暂无补充说明。")}</p>
         </div>
@@ -333,7 +361,7 @@ function renderCreatePage() {
   const hasImages = ui.draft.images.length > 0;
 
   return `
-    <main class="page stack-24">
+    <main class="${pageClass("stack-24")}">
       <div class="topbar">
         <button class="button button-outline" data-action="go-home">${renderIcon("arrow-left")}返回首页</button>
       </div>
@@ -383,15 +411,15 @@ function renderCreatePage() {
                       ${ui.draft.images.map(renderDraftImage).join("")}
                     </div>
                   </div>
-                  <label class="button button-outline button-large upload-bottom-button" for="file-input">${renderIcon("upload")}选择文件</label>
+                  <label class="button button-outline button-large upload-bottom-button" for="file-input">选择文件</label>
                 </div>
               `
               : `
                 <div class="upload-empty ${ui.uploadDragover ? "is-dragover" : ""}" data-dropzone="upload">
                   <div>
-                    <div class="upload-icon">${renderIcon("upload")}</div>
+                    <div class="upload-icon">${renderIcon("upload-board")}</div>
                     <div class="panel-title">上传Demo图片</div>
-                    <label class="button button-outline button-large" for="file-input" style="margin-top: 12px;">${renderIcon("upload")}选择文件</label>
+                    <label class="button button-outline button-large" for="file-input" style="margin-top: 12px;">选择文件</label>
                   </div>
                 </div>
               `
@@ -415,7 +443,9 @@ function renderCreatePage() {
 function renderDraftImage(image, index) {
   return `
     <div class="thumb-card" draggable="true" data-index="${index}">
-      <img src="${escapeAttr(image)}" alt="上传图片 ${index + 1}" />
+      <button class="thumb-preview-btn" data-action="open-image" data-src="${escapeAttr(image)}" data-alt="上传图片 ${index + 1}">
+        <img src="${escapeAttr(image)}" alt="上传图片 ${index + 1}" />
+      </button>
       <div class="thumb-toolbar">
         <button class="thumb-delete" data-action="remove-image" data-index="${index}" title="删除图片">${renderIcon("close")}</button>
       </div>
@@ -434,7 +464,7 @@ function renderSharePage(demoId) {
   const progressWidth = `${((ui.galleryIndex + 1) / gallery.length) * 100}%`;
 
   return `
-    <main class="page stack-28">
+    <main class="${pageClass("stack-28")}">
       <div class="share-topbar">
         ${renderBrand()}
       </div>
@@ -444,14 +474,16 @@ function renderSharePage(demoId) {
         <div class="hero-note">${escapeHtml(demo.focusPrompt || demo.description || "请重点关注关键链路是否容易理解。")}</div>
       </section>
 
-      <section class="stack-24">
+      <section class="share-gallery-card">
         <div class="gallery-scroll" data-gallery-scroll>
           ${gallery
             .map((image, index) => {
+              const serial = String(index + 1).padStart(2, "0");
               return `
                 <article class="gallery-card ${index === ui.galleryIndex ? "is-active" : ""}">
-                  <button data-action="select-gallery" data-index="${index}">
+                  <button data-action="open-image" data-src="${escapeAttr(image)}" data-alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图">
                     <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图" />
+                    <span class="gallery-seq-badge">${serial}</span>
                   </button>
                 </article>
               `;
@@ -461,7 +493,7 @@ function renderSharePage(demoId) {
         <div class="gallery-progress" data-gallery-progress><span style="width: ${progressWidth};"></span></div>
       </section>
 
-      <form class="feedback-form" id="feedback-form" data-demo-id="${escapeAttr(demo.id)}">
+      <form class="feedback-form share-feedback-form" id="feedback-form" data-demo-id="${escapeAttr(demo.id)}">
         <h2 class="panel-title">请提交你的建议：</h2>
         <div class="field">
           <label for="mis-input">MIS号</label>
@@ -489,7 +521,7 @@ function renderFeedbackPage(demoId) {
   const feedback = getFeedbackForDemo(demo.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   return `
-    <main class="page stack-24">
+    <main class="${pageClass("stack-24")}">
       <div class="share-topbar">
         <button class="button button-outline" data-action="go-home">${renderIcon("arrow-left")}返回首页</button>
         <button class="button button-primary" data-action="copy-share" data-demo-id="${escapeAttr(demo.id)}">复制分享</button>
@@ -505,7 +537,9 @@ function renderFeedbackPage(demoId) {
           .map(
             (image, index) => `
               <div class="thumb-card">
-                <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 缩略图 ${index + 1}" />
+                <button class="thumb-preview-btn" data-action="open-image" data-src="${escapeAttr(image)}" data-alt="${escapeAttr(demo.title)} 缩略图 ${index + 1}">
+                  <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 缩略图 ${index + 1}" />
+                </button>
               </div>
             `
           )
@@ -513,14 +547,22 @@ function renderFeedbackPage(demoId) {
       </div>
 
       <section class="feedback-list-card">
-        <div class="section-head">
-          <div>
-            <span class="feedback-badge">反馈列表</span>
-            <h2 class="section-title" style="margin-top: 8px;">这条 Demo 收到的全部建议</h2>
-            <div class="feedback-meta">
-              <span class="feedback-caption">${feedback.length} 条</span>
-              <span class="feedback-caption">创建于 ${formatDate(demo.createdAt)}</span>
-              <span class="feedback-caption">分享于 ${formatDate(demo.updatedAt)}</span>
+        <div class="section-head feedback-head">
+          <div class="feedback-head-title">
+            <h2 class="section-title">这条 Demo 收到的全部建议</h2>
+          </div>
+          <div class="feedback-summary-grid">
+            <div class="feedback-summary-item">
+              <span class="feedback-summary-label">反馈总数</span>
+              <strong class="feedback-summary-value">${feedback.length} 条</strong>
+            </div>
+            <div class="feedback-summary-item">
+              <span class="feedback-summary-label">创建时间</span>
+              <strong class="feedback-summary-value">${formatDate(demo.createdAt)}</strong>
+            </div>
+            <div class="feedback-summary-item">
+              <span class="feedback-summary-label">最近分享</span>
+              <strong class="feedback-summary-value">${formatDate(demo.updatedAt)}</strong>
             </div>
           </div>
         </div>
@@ -550,7 +592,7 @@ function renderFeedbackItem(item) {
 
 function renderMissing(message) {
   return `
-    <main class="page">
+    <main class="${pageClass()}">
       <div class="empty-state">${escapeHtml(message)}</div>
     </main>
   `;
@@ -583,9 +625,9 @@ function renderModal() {
           <p class="panel-desc">把下面这个链接复制到 IM 工具里，别人就可以在手机和 PC 上查看这条 Demo 并提交反馈。</p>
           <div class="link-box">${escapeHtml(link)}</div>
           <div class="card-actions" style="justify-content: flex-end;">
-            <button class="button button-outline" data-action="close-modal">继续创建</button>
-            <button class="button button-outline" data-action="open-feedback" data-demo-id="${escapeAttr(demo.id)}">查看反馈</button>
-            <button class="button button-primary" data-action="copy-share" data-demo-id="${escapeAttr(demo.id)}">复制链接</button>
+            <button class="button button-outline" data-action="modal-continue">继续创建</button>
+            <button class="button button-outline" data-action="modal-open-feedback" data-demo-id="${escapeAttr(demo.id)}">查看反馈</button>
+            <button class="button button-primary" data-action="modal-copy-home" data-demo-id="${escapeAttr(demo.id)}">分享链接</button>
           </div>
         </div>
       </div>
@@ -593,6 +635,48 @@ function renderModal() {
   }
 
   return "";
+}
+
+function renderLightbox() {
+  if (!ui.lightbox) {
+    return "";
+  }
+  return `
+    <div class="overlay image-overlay" data-action="close-lightbox">
+      <div class="image-lightbox">
+        <img src="${escapeAttr(ui.lightbox.src)}" alt="${escapeAttr(ui.lightbox.alt || "预览大图")}" />
+      </div>
+    </div>
+  `;
+}
+
+function renderDemoPreview(demo) {
+  const images = demo.images || [];
+  if (!images.length) {
+    return `<div class="preview-shell"><div class="preview-placeholder"><span></span><span></span><span></span><span></span><span></span></div></div>`;
+  }
+  if (images.length === 1) {
+    return `
+      <div class="preview-shell">
+        <img src="${escapeAttr(images[0])}" alt="${escapeAttr(demo.title)} 预览" />
+        <span class="preview-index-badge">01</span>
+      </div>
+    `;
+  }
+  const stack = images.slice(0, 3);
+  return `
+    <div class="preview-stack" aria-label="${escapeAttr(demo.title)} 预览叠层">
+      ${stack
+        .map(
+          (image, index) => `
+            <div class="preview-stack-layer layer-${index + 1}">
+              <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 预览 ${index + 1}" />
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderToast() {
@@ -645,8 +729,17 @@ function handleClick(event) {
     copyShareLink(trigger.dataset.demoId);
     return;
   }
+  if (action === "open-image") {
+    ui.lightbox = {
+      src: trigger.dataset.src,
+      alt: trigger.dataset.alt || "",
+    };
+    render();
+    return;
+  }
   if (action === "open-feedback") {
     markFeedbackRead(trigger.dataset.demoId);
+    ui.modal = null;
     location.hash = `/feedback/${encodeURIComponent(trigger.dataset.demoId)}`;
     return;
   }
@@ -662,6 +755,34 @@ function handleClick(event) {
   }
   if (action === "close-modal") {
     ui.modal = null;
+    render();
+    return;
+  }
+  if (action === "modal-continue") {
+    ui.modal = null;
+    ui.draft = createEmptyDraft();
+    ui.uploadDragover = false;
+    if (location.hash.replace(/^#/, "") === "/new") {
+      render();
+      return;
+    }
+    location.hash = "/new";
+    return;
+  }
+  if (action === "modal-copy-home") {
+    copyShareLink(trigger.dataset.demoId);
+    ui.modal = null;
+    location.hash = "/";
+    return;
+  }
+  if (action === "modal-open-feedback") {
+    markFeedbackRead(trigger.dataset.demoId);
+    ui.modal = null;
+    location.hash = `/feedback/${encodeURIComponent(trigger.dataset.demoId)}`;
+    return;
+  }
+  if (action === "close-lightbox") {
+    ui.lightbox = null;
     render();
   }
 }
@@ -1061,8 +1182,11 @@ function renderIcon(name) {
   const icons = {
     plus: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg>',
     upload: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3.75M5.25 6.5 8 3.75l2.75 2.75M3.5 12.5h9" /></svg>',
+    "upload-board":
+      '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M962.5 773.125l-119.375 0 0-119.375c0-16.25-13.125-29.375-29.375-29.375-16.25 0-29.375 13.125-29.375 29.375l0 119.375-119.375 0c-16.25 0-29.375 13.125-29.375 29.375 0 16.25 13.125 29.375 29.375 29.375l119.375 0 0 119.375c0 16.25 13.125 29.375 29.375 29.375 16.25 0 29.375-13.125 29.375-29.375l0-119.375L962.5 831.875c16.25 0 29.375-13.125 29.375-29.375C991.875 786.25 978.75 773.125 962.5 773.125zM699.375 288.125c0-67.5-55-122.5-122.5-122.5-67.5 0-122.5 55-122.5 122.5s55 122.5 122.5 122.5C644.375 410.625 699.375 355.625 699.375 288.125zM508.75 288.125c0-37.5 30.625-68.125 68.125-68.125 37.5 0 68.125 30.625 68.125 68.125 0 37.5-30.625 68.125-68.125 68.125C539.375 356.25 508.75 325.625 508.75 288.125zM743.125 873.125 182.5 873.125c-30 0-54.375-24.375-54.375-54.375L128.125 166.25c0-30 24.375-54.375 54.375-54.375l653.125 0c30 0 54.375 24.375 54.375 54.375l0 566.875 54.375 0 0-566.875c0-60-48.75-108.75-108.75-108.75L182.5 57.5c-60 0-108.75 48.75-108.75 108.75L73.75 818.75c0 60 48.75 108.75 108.75 108.75l560.625 0L743.125 873.125 743.125 873.125zM793.125 569.375c5 3.125 10 4.375 15 4.375 8.75 0 17.5-4.375 22.5-11.875 8.125-12.5 5-29.375-7.5-37.5l-81.875-54.375c-10-6.875-23.125-5.625-31.875 1.875l0-0.625L580 575 388.125 442.5c0 0 0 0 0 0-2.5-1.25-5-2.5-7.5-3.125-0.625 0-1.875-0.625-2.5-1.25-2.5-0.625-5 0-6.875 0-1.25 0-2.5 0-3.125 0-1.25 0-2.5 1.25-3.125 1.25-2.5 0.625-4.375 1.25-6.25 2.5 0 0 0 0 0 0L194.375 551.25c-12.5 8.125-15.625 25-7.5 37.5 5 8.125 13.75 11.875 22.5 11.875 5 0 10.625-1.25 15-4.375l148.125-98.75 287.5 196.25c5 3.125 10 5 15.625 5 8.75 0 16.875-4.375 22.5-11.875 8.75-12.5 5.625-29.375-6.875-38.125l-63.75-43.125 101.25-80.625L793.125 569.375z" /></svg>',
     close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg>',
-    trash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.25 3.5h3.5M2.75 4.5h10.5M5.25 6.25v4.5M8 6.25v4.5M10.75 6.25v4.5M4 4.5l.5 8h7l.5-8" /></svg>',
+    trash:
+      '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M800 384C782.08 384 768 398.08 768 416L768 832c0 35.2-28.8 64-64 64l-64 0L640 416C640 398.08 625.92 384 608 384 590.08 384 576 398.08 576 416L576 896 448 896 448 416C448 398.08 433.92 384 416 384 398.08 384 384 398.08 384 416L384 896 320 896c-35.2 0-64-28.8-64-64L256 416C256 398.08 241.92 384 224 384 206.08 384 192 398.08 192 416L192 832c0 70.4 57.6 128 128 128l384 0c70.4 0 128-57.6 128-128L832 416C832 398.08 817.92 384 800 384zM864 256l-704 0C142.08 256 128 270.08 128 288 128 305.92 142.08 320 160 320l704 0C881.92 320 896 305.92 896 288 896 270.08 881.92 256 864 256zM352 192l320 0C689.92 192 704 177.92 704 160 704 142.08 689.92 128 672 128l-320 0C334.08 128 320 142.08 320 160 320 177.92 334.08 192 352 192z" /></svg>',
     "arrow-left": '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.5 8h-9M6.5 4 3 8l3.5 4" /></svg>',
   };
   return `<span class="icon icon-${name}">${icons[name] || ""}</span>`;
