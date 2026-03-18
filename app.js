@@ -1,5 +1,5 @@
-const STORAGE_KEY = "demo-feedback-store-v1";
 const TOAST_MS = 2400;
+const API_BASE = "";
 
 const app = document.querySelector("#app");
 
@@ -13,17 +13,20 @@ const ui = {
   dragIndex: null,
   galleryIndex: 0,
   galleryScrollLeft: 0,
+  mobileSchemeScrollLeft: 0,
   lastRouteKey: "",
   pageEnter: true,
   uploadDragover: false,
+  mobileFeedbackOpen: false,
 };
 
-const state = loadState();
-seedIfNeeded(state);
-normalizeSampleImages(state);
-saveState();
+let state = { demos: [], feedback: [] };
+let appReady = false;
 
-window.addEventListener("hashchange", render);
+window.addEventListener("hashchange", () => {
+  history.replaceState({}, "", location.hash.slice(1) || "/");
+  render();
+});
 window.addEventListener("popstate", render);
 document.addEventListener("click", handleClick);
 document.addEventListener("submit", handleSubmit);
@@ -37,7 +40,14 @@ document.addEventListener("dragleave", handleDragLeave);
 document.addEventListener("scroll", handleScroll, true);
 document.addEventListener("pointerdown", handlePointerDown);
 
-render();
+if (location.hash && location.hash.length > 1) {
+  const hashPath = location.hash.slice(1);
+  if (hashPath.startsWith("/")) {
+    history.replaceState({}, "", hashPath);
+  }
+}
+
+bootstrap();
 
 function createEmptyDraft() {
   return {
@@ -55,134 +65,47 @@ function createEmptyFeedbackDraft() {
   };
 }
 
-function loadState() {
+async function bootstrap() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return { demos: [], feedback: [] };
-    }
-    const parsed = JSON.parse(raw);
-    return {
-      demos: Array.isArray(parsed.demos) ? parsed.demos : [],
-      feedback: Array.isArray(parsed.feedback) ? parsed.feedback : [],
-    };
+    state = await apiGet("/api/bootstrap");
   } catch {
-    return { demos: [], feedback: [] };
+    state = { demos: [], feedback: [] };
   }
+  appReady = true;
+  render();
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function seedIfNeeded(current) {
-  if (current.demos.length > 0) {
-    return;
-  }
-
-  const demoA = {
-    id: "checkout-v2",
-    title: "支付页转化优化",
-    module: "首页 / 结账 / 支付",
-    description:
-      "重点反馈集中在入口文案、表单校验与支付确认页的决策落差，建议先补齐关键页面截图。",
-    focusPrompt:
-      "请重点关注：信息层级是否清晰、关键按钮是否容易识别，以及提交前确认步骤是否足够明确。",
-    images: [
-      makeSampleImage("01", "#dfe7ff", "#f9d2e7"),
-      makeSampleImage("02", "#f6f7fb", "#b8d6ff"),
-      makeSampleImage("03", "#ffcd4d", "#ff8c00"),
-      makeSampleImage("04", "#d6f0d3", "#70a85d"),
-    ],
-    createdAt: "2026-03-16T08:12:00+08:00",
-    updatedAt: "2026-03-16T10:23:00+08:00",
-  };
-
-  const demoB = {
-    id: "onboarding-refresh",
-    title: "新手引导流程优化",
-    module: "登录 / 欢迎页 / 设置",
-    description:
-      "当前反馈主要集中在动线跳转和文案理解成本，建议先收集首屏图片与关键按钮状态。",
-    focusPrompt:
-      "请重点看：首屏是否知道下一步做什么，跳过按钮是否容易找到，以及确认文案是否让人有把握。",
-    images: [
-      makeSampleImage("A1", "#efe5ff", "#b9a1ff"),
-      makeSampleImage("A2", "#fff1d4", "#ffc66c"),
-      makeSampleImage("A3", "#d4fff0", "#76dfbb"),
-    ],
-    createdAt: "2026-03-15T18:20:00+08:00",
-    updatedAt: "2026-03-16T09:41:00+08:00",
-  };
-
-  current.demos.push(demoA, demoB);
-  current.feedback.push(
-    {
-      id: crypto.randomUUID(),
-      demoId: demoA.id,
-      mis: "Alice",
-      role: "产品经理",
-      text: "建议把“确认支付”前的金额摘要再突出一些，目前滚动后很容易忽略。",
-      device: "iPhone",
-      createdAt: "2026-03-16T10:23:00+08:00",
-      isNew: true,
+async function apiGet(url) {
+  const response = await fetch(`${API_BASE}${url}`, {
+    headers: {
+      Accept: "application/json",
     },
-    {
-      id: crypto.randomUUID(),
-      demoId: demoA.id,
-      mis: "Kevin",
-      role: "运营",
-      text: "优惠券输入和地址确认都在同一屏，建议增加一步提示，降低误操作。",
-      device: "MacBook",
-      createdAt: "2026-03-16T09:41:00+08:00",
-      isNew: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      demoId: demoA.id,
-      mis: "Mina",
-      role: "设计师",
-      text: "建议在顶部增加“反馈目标”一句话，让外部用户更快理解这次评审重点。",
-      device: "Web",
-      createdAt: "2026-03-16T08:55:00+08:00",
-      isNew: true,
-    },
-    {
-      id: crypto.randomUUID(),
-      demoId: demoB.id,
-      mis: "Rex",
-      role: "研发",
-      text: "跳过引导的按钮目前太弱了，第一次看会担心点错。",
-      device: "Windows",
-      createdAt: "2026-03-16T09:18:00+08:00",
-      isNew: true,
-    }
-  );
-}
-
-function normalizeSampleImages(current) {
-  current.demos.forEach((demo) => {
-    demo.images = (demo.images || []).map((image) => stripSampleLabel(image));
   });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json();
 }
 
-function stripSampleLabel(dataUrl) {
-  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/svg+xml")) {
-    return dataUrl;
+async function apiRequest(url, options = {}) {
+  const response = await fetch(`${API_BASE}${url}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
-  const marker = "<text x=\"480\" y=\"610\"";
-  if (!dataUrl.includes(marker)) {
-    return dataUrl;
+  if (response.status === 204) {
+    return null;
   }
-  try {
-    const prefix = "data:image/svg+xml;charset=UTF-8,";
-    const encoded = dataUrl.startsWith(prefix) ? dataUrl.slice(prefix.length) : dataUrl.split(",")[1] || "";
-    const decoded = decodeURIComponent(encoded);
-    const stripped = decoded.replace(/<text[\s\S]*?<\/text>/g, "");
-    return `${prefix}${encodeURIComponent(stripped)}`;
-  } catch {
-    return dataUrl;
-  }
+  return response.json();
 }
 
 function makeSampleImage(label, start, end) {
@@ -210,9 +133,7 @@ function makeSampleImage(label, start, end) {
 }
 
 function getRoute() {
-  const raw = location.hash.replace(/^#/, "") || "/";
-  const [path] = raw.split("?");
-  const parts = path.split("/").filter(Boolean);
+  const parts = location.pathname.split("/").filter(Boolean);
 
   if (parts[0] === "new") {
     return { name: "new" };
@@ -226,7 +147,26 @@ function getRoute() {
   return { name: "home" };
 }
 
+function navigate(path) {
+  if (location.pathname === path) {
+    render();
+    return;
+  }
+  history.pushState({}, "", path);
+  render();
+}
+
 function render() {
+  if (!appReady) {
+    app.innerHTML = `
+      <div class="app-shell">
+        <main class="${pageClass()}">
+          <div class="empty-state">正在加载真实数据…</div>
+        </main>
+      </div>
+    `;
+    return;
+  }
   const route = getRoute();
   const routeKey = `${route.name}:${route.id || ""}`;
   ui.pageEnter = ui.lastRouteKey !== routeKey;
@@ -235,6 +175,7 @@ function render() {
     ui.galleryIndex = clamp(ui.galleryIndex, 0, Math.max(getDemo(route.id)?.images.length - 1 || 0, 0));
   } else {
     ui.galleryIndex = 0;
+    ui.mobileFeedbackOpen = false;
   }
 
   app.innerHTML = `
@@ -246,6 +187,7 @@ function render() {
     ${renderToast()}
   `;
   syncGalleryProgress();
+  syncMobileSchemeScroll();
 }
 
 function pageClass(extra = "") {
@@ -459,12 +401,13 @@ function renderSharePage(demoId) {
     return renderMissing("这个 Demo 不存在，可能已经被删除。");
   }
   const feedbackDraft = getFeedbackDraft(demo.id);
+  const canSubmitFeedback = feedbackDraft.mis.trim() && feedbackDraft.text.trim();
 
   const gallery = demo.images.length ? demo.images : [makeSampleImage("00", "#efefef", "#dfdfdf")];
   const progressWidth = `${((ui.galleryIndex + 1) / gallery.length) * 100}%`;
 
   return `
-    <main class="${pageClass("stack-28")}">
+    <main class="${pageClass("stack-28 share-page")}">
       <div class="share-topbar">
         ${renderBrand()}
       </div>
@@ -493,6 +436,25 @@ function renderSharePage(demoId) {
         <div class="gallery-progress" data-gallery-progress><span style="width: ${progressWidth};"></span></div>
       </section>
 
+      <section class="mobile-scheme-stage">
+        <div class="mobile-scheme-scroll" data-mobile-scheme-scroll>
+        ${gallery
+          .map((image, index) => {
+            const serial = String(index + 1).padStart(2, "0");
+            return `
+              <article class="mobile-scheme-frame">
+                <button class="mobile-scheme-btn" data-action="open-image" data-src="${escapeAttr(image)}" data-alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图">
+                  <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图" />
+                  <span class="gallery-seq-badge">${serial}</span>
+                </button>
+              </article>
+            `;
+          })
+          .join("")}
+        </div>
+        <div class="mobile-scheme-indicator">方案${ui.galleryIndex + 1}/${gallery.length}</div>
+      </section>
+
       <form class="feedback-form share-feedback-form" id="feedback-form" data-demo-id="${escapeAttr(demo.id)}">
         <h2 class="panel-title">请提交你的建议：</h2>
         <div class="field">
@@ -505,9 +467,33 @@ function renderSharePage(demoId) {
         </div>
         <div class="form-actions">
           <div class="helper-text">建议会立即回收到设计师后台，不会出现在公开页上。</div>
-          <button class="button button-primary" type="submit">提交反馈</button>
+          <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
         </div>
       </form>
+
+      <button class="mobile-feedback-fab" data-action="toggle-mobile-feedback" aria-label="打开反馈面板">
+        ${renderIcon("feedback-fab")}
+      </button>
+
+      <div class="mobile-feedback-backdrop ${ui.mobileFeedbackOpen ? "is-open" : ""}" data-action="close-mobile-feedback">
+        <div class="mobile-feedback-sheet ${ui.mobileFeedbackOpen ? "is-open" : ""}">
+          <form class="feedback-form mobile-feedback-form" id="mobile-feedback-form" data-demo-id="${escapeAttr(demo.id)}">
+            <button class="mobile-sheet-close" type="button" data-action="close-mobile-feedback" aria-label="关闭反馈面板">${renderIcon("close")}</button>
+            <h2 class="panel-title">请提交你的建议：</h2>
+            <div class="field">
+              <label for="mobile-mis-input">MIS号</label>
+              <input class="input" id="mobile-mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" />
+            </div>
+            <div class="field">
+              <label for="mobile-feedback-text">反馈内容</label>
+              <textarea class="textarea" id="mobile-feedback-text" name="text" placeholder="请写下你的建议、疑问或感受">${escapeHtml(feedbackDraft.text)}</textarea>
+            </div>
+            <div class="form-actions">
+              <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </main>
   `;
 }
@@ -686,7 +672,7 @@ function renderToast() {
   return `<div class="toast">${escapeHtml(ui.toast)}</div>`;
 }
 
-function handleClick(event) {
+async function handleClick(event) {
   const trigger = event.target.closest("[data-action]");
   if (!trigger && event.target.closest(".modal")) {
     return;
@@ -698,15 +684,15 @@ function handleClick(event) {
   const action = trigger.dataset.action;
 
   if (action === "go-home") {
-    location.hash = "/";
+    navigate("/");
     return;
   }
   if (action === "go-new") {
-    location.hash = "/new";
+    navigate("/new");
     return;
   }
   if (action === "create-demo") {
-    createDemo();
+    await createDemo();
     return;
   }
   if (action === "reset-draft") {
@@ -722,11 +708,11 @@ function handleClick(event) {
     return;
   }
   if (action === "delete-demo") {
-    deleteDemo(trigger.dataset.demoId);
+    await deleteDemo(trigger.dataset.demoId);
     return;
   }
   if (action === "copy-share") {
-    copyShareLink(trigger.dataset.demoId);
+    await copyShareLink(trigger.dataset.demoId);
     return;
   }
   if (action === "open-image") {
@@ -738,9 +724,9 @@ function handleClick(event) {
     return;
   }
   if (action === "open-feedback") {
-    markFeedbackRead(trigger.dataset.demoId);
+    await markFeedbackRead(trigger.dataset.demoId);
     ui.modal = null;
-    location.hash = `/feedback/${encodeURIComponent(trigger.dataset.demoId)}`;
+    navigate(`/feedback/${encodeURIComponent(trigger.dataset.demoId)}`);
     return;
   }
   if (action === "select-gallery") {
@@ -762,35 +748,53 @@ function handleClick(event) {
     ui.modal = null;
     ui.draft = createEmptyDraft();
     ui.uploadDragover = false;
-    if (location.hash.replace(/^#/, "") === "/new") {
+    if (location.pathname === "/new") {
       render();
       return;
     }
-    location.hash = "/new";
+    navigate("/new");
     return;
   }
   if (action === "modal-copy-home") {
-    copyShareLink(trigger.dataset.demoId);
+    await copyShareLink(trigger.dataset.demoId);
     ui.modal = null;
-    location.hash = "/";
+    navigate("/");
     return;
   }
   if (action === "modal-open-feedback") {
-    markFeedbackRead(trigger.dataset.demoId);
+    await markFeedbackRead(trigger.dataset.demoId);
     ui.modal = null;
-    location.hash = `/feedback/${encodeURIComponent(trigger.dataset.demoId)}`;
+    navigate(`/feedback/${encodeURIComponent(trigger.dataset.demoId)}`);
     return;
   }
   if (action === "close-lightbox") {
     ui.lightbox = null;
     render();
+    return;
+  }
+  if (action === "toggle-mobile-feedback") {
+    ui.mobileFeedbackOpen = !ui.mobileFeedbackOpen;
+    render();
+    return;
+  }
+  if (action === "close-mobile-feedback") {
+    if (event.target.closest(".mobile-feedback-sheet") && !trigger.classList.contains("mobile-sheet-close")) {
+      return;
+    }
+    ui.mobileFeedbackOpen = false;
+    render();
   }
 }
 
-function handleSubmit(event) {
-  if (event.target.id === "feedback-form") {
+async function handleSubmit(event) {
+  if (event.target.id === "feedback-form" || event.target.id === "mobile-feedback-form") {
     event.preventDefault();
-    submitFeedback(new FormData(event.target), event.target.dataset.demoId);
+    const source = event.target.id === "mobile-feedback-form" ? "mobile" : "desktop";
+    const submitted = await submitFeedback(new FormData(event.target), event.target.dataset.demoId, source);
+    if (submitted && source === "mobile") {
+      ui.mobileFeedbackOpen = false;
+      render();
+    }
   }
 }
 
@@ -804,7 +808,7 @@ function handleInput(event) {
     return;
   }
   if (["mis", "text"].includes(target.name)) {
-    const form = target.closest("#feedback-form");
+    const form = target.closest("form[data-demo-id]");
     if (!form) {
       return;
     }
@@ -859,11 +863,26 @@ function handleDragLeave(event) {
 
 function handleScroll(event) {
   const scroller = event.target.closest?.("[data-gallery-scroll]");
-  if (!scroller) {
+  if (scroller) {
+    ui.galleryScrollLeft = scroller.scrollLeft;
+    syncGalleryProgress();
     return;
   }
-  ui.galleryScrollLeft = scroller.scrollLeft;
-  syncGalleryProgress();
+  const mobileScroller = event.target.closest?.("[data-mobile-scheme-scroll]");
+  if (!mobileScroller) {
+    return;
+  }
+  ui.mobileSchemeScrollLeft = mobileScroller.scrollLeft;
+  const pageWidth = mobileScroller.clientWidth || 1;
+  ui.galleryIndex = clamp(
+    Math.round(mobileScroller.scrollLeft / pageWidth),
+    0,
+    Math.max(mobileScroller.children.length - 1, 0)
+  );
+  const indicator = document.querySelector(".mobile-scheme-indicator");
+  if (indicator) {
+    indicator.textContent = `方案${ui.galleryIndex + 1}/${mobileScroller.children.length}`;
+  }
 }
 
 async function handleDrop(event) {
@@ -932,73 +951,91 @@ async function createDemo() {
   ui.loading = true;
   render();
 
-  const id = slugify(ui.draft.title) || crypto.randomUUID();
-  const now = new Date().toISOString();
-  const demo = {
-    id: ensureUniqueDemoId(id),
-    title: ui.draft.title.trim(),
-    module: ui.draft.module.trim(),
-    description: ui.draft.description.trim(),
-    focusPrompt: ui.draft.description.trim() || "请重点关注信息层级、主要操作入口和确认动作是否明确。",
-    images: [...ui.draft.images],
-    createdAt: now,
-    updatedAt: now,
-  };
+  try {
+    const payload = {
+      title: ui.draft.title.trim(),
+      module: ui.draft.module.trim(),
+      description: ui.draft.description.trim(),
+      focusPrompt: ui.draft.description.trim() || "请重点关注信息层级、主要操作入口和确认动作是否明确。",
+      images: [...ui.draft.images],
+    };
+    const result = await apiRequest("/api/demos", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
 
-  state.demos.unshift(demo);
-  saveState();
-
-  ui.loading = false;
-  ui.modal = { type: "created", demoId: demo.id };
-  ui.draft = createEmptyDraft();
-  showDelightToast("created");
-  render();
+    if (result?.demo) {
+      state.demos.unshift(result.demo);
+      ui.modal = { type: "created", demoId: result.demo.id };
+      ui.draft = createEmptyDraft();
+      showDelightToast("created");
+    }
+  } catch (error) {
+    showToast(error.message || "创建失败，请稍后再试。");
+  } finally {
+    ui.loading = false;
+    render();
+  }
 }
 
-function submitFeedback(formData, demoId) {
+async function submitFeedback(formData, demoId, source = "desktop") {
   const mis = String(formData.get("mis") || "").trim();
   const text = String(formData.get("text") || "").trim();
   if (!mis || !text) {
     showToast("MIS号和反馈内容都要填写。");
-    return;
+    return false;
   }
 
-  const feedback = {
-    id: crypto.randomUUID(),
-    demoId,
-    mis,
-    role: "",
-    text,
-    device: detectDeviceName(),
-    createdAt: new Date().toISOString(),
-    isNew: true,
-  };
+  try {
+    const result = await apiRequest(`/api/demos/${encodeURIComponent(demoId)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({
+        mis,
+        text,
+        device: detectDeviceName(),
+      }),
+    });
 
-  state.feedback.push(feedback);
-  const demo = getDemo(demoId);
-  if (demo) {
-    demo.updatedAt = feedback.createdAt;
+    if (result?.feedback) {
+      state.feedback.unshift(result.feedback);
+      const demo = state.demos.find((item) => item.id === demoId);
+      if (demo && result.demo?.updatedAt) {
+        demo.updatedAt = result.demo.updatedAt;
+      }
+      ui.feedbackDrafts[demoId] = createEmptyFeedbackDraft();
+      ui.mobileFeedbackOpen = false;
+      render();
+      showToast(source === "mobile" ? "提交成功" : "反馈已提交");
+      return true;
+    }
+  } catch (error) {
+    showToast(error.message || "提交失败，请稍后再试。");
   }
-  ui.feedbackDrafts[demoId] = createEmptyFeedbackDraft();
-  saveState();
-  showDelightToast("feedback");
-  render();
+  return false;
 }
 
-function deleteDemo(demoId) {
+async function deleteDemo(demoId) {
   const demo = getDemo(demoId);
   if (!demo) {
-    return;
+    return false;
   }
-  const confirmed = window.confirm(`确认删除「${demo.title}」吗？本地反馈也会一起删除。`);
+  const confirmed = window.confirm(`确认删除「${demo.title}」吗？该 Demo 和全部反馈都会一起删除。`);
   if (!confirmed) {
-    return;
+    return false;
   }
-  state.demos = state.demos.filter((item) => item.id !== demoId);
-  state.feedback = state.feedback.filter((item) => item.demoId !== demoId);
-  saveState();
-  showToast("Demo 已删除。");
-  render();
+  try {
+    await apiRequest(`/api/demos/${encodeURIComponent(demoId)}`, {
+      method: "DELETE",
+    });
+    state.demos = state.demos.filter((item) => item.id !== demoId);
+    state.feedback = state.feedback.filter((item) => item.demoId !== demoId);
+    showToast("Demo 已删除。");
+    render();
+    return true;
+  } catch (error) {
+    showToast(error.message || "删除失败，请稍后再试。");
+    return false;
+  }
 }
 
 async function copyShareLink(demoId) {
@@ -1012,7 +1049,7 @@ async function copyShareLink(demoId) {
 }
 
 function getShareLink(demoId) {
-  return `${location.href.split("#")[0]}#/share/${encodeURIComponent(demoId)}`;
+  return `${location.origin}/share/${encodeURIComponent(demoId)}`;
 }
 
 function getDemo(demoId) {
@@ -1030,28 +1067,27 @@ function getFeedbackDraft(demoId) {
   return ui.feedbackDrafts[demoId];
 }
 
-function markFeedbackRead(demoId) {
-  let changed = false;
-  state.feedback.forEach((item) => {
-    if (item.demoId === demoId && item.isNew) {
-      item.isNew = false;
-      changed = true;
-    }
-  });
-  if (changed) {
-    saveState();
+async function markFeedbackRead(demoId) {
+  const changedItems = state.feedback.filter((item) => item.demoId === demoId && item.isNew);
+  if (!changedItems.length) {
+    return;
   }
+  changedItems.forEach((item) => {
+    item.isNew = false;
+  });
+  try {
+    await apiRequest(`/api/demos/${encodeURIComponent(demoId)}/feedback/mark-read`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch {
+    // Local state already updated so the UI remains responsive.
+  }
+  render();
 }
 
 function ensureUniqueDemoId(baseId) {
-  if (!getDemo(baseId)) {
-    return baseId;
-  }
-  let suffix = 2;
-  while (getDemo(`${baseId}-${suffix}`)) {
-    suffix += 1;
-  }
-  return `${baseId}-${suffix}`;
+  return baseId;
 }
 
 function showToast(message) {
@@ -1178,12 +1214,31 @@ function syncGalleryProgress() {
   thumb.style.transform = `translateX(${x}px)`;
 }
 
+function syncMobileSchemeScroll() {
+  const scroller = document.querySelector("[data-mobile-scheme-scroll]");
+  if (!scroller) {
+    return;
+  }
+  const pageWidth = scroller.clientWidth || 1;
+  const targetLeft = ui.galleryIndex * pageWidth;
+  if (Math.abs(scroller.scrollLeft - targetLeft) > 2) {
+    scroller.scrollLeft = ui.mobileSchemeScrollLeft > 0 ? ui.mobileSchemeScrollLeft : targetLeft;
+  }
+  const total = scroller.children.length || 1;
+  const indicator = document.querySelector(".mobile-scheme-indicator");
+  if (indicator) {
+    indicator.textContent = `方案${clamp(ui.galleryIndex + 1, 1, total)}/${total}`;
+  }
+}
+
 function renderIcon(name) {
   const icons = {
     plus: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg>',
     upload: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3.75M5.25 6.5 8 3.75l2.75 2.75M3.5 12.5h9" /></svg>',
     "upload-board":
       '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M962.5 773.125l-119.375 0 0-119.375c0-16.25-13.125-29.375-29.375-29.375-16.25 0-29.375 13.125-29.375 29.375l0 119.375-119.375 0c-16.25 0-29.375 13.125-29.375 29.375 0 16.25 13.125 29.375 29.375 29.375l119.375 0 0 119.375c0 16.25 13.125 29.375 29.375 29.375 16.25 0 29.375-13.125 29.375-29.375l0-119.375L962.5 831.875c16.25 0 29.375-13.125 29.375-29.375C991.875 786.25 978.75 773.125 962.5 773.125zM699.375 288.125c0-67.5-55-122.5-122.5-122.5-67.5 0-122.5 55-122.5 122.5s55 122.5 122.5 122.5C644.375 410.625 699.375 355.625 699.375 288.125zM508.75 288.125c0-37.5 30.625-68.125 68.125-68.125 37.5 0 68.125 30.625 68.125 68.125 0 37.5-30.625 68.125-68.125 68.125C539.375 356.25 508.75 325.625 508.75 288.125zM743.125 873.125 182.5 873.125c-30 0-54.375-24.375-54.375-54.375L128.125 166.25c0-30 24.375-54.375 54.375-54.375l653.125 0c30 0 54.375 24.375 54.375 54.375l0 566.875 54.375 0 0-566.875c0-60-48.75-108.75-108.75-108.75L182.5 57.5c-60 0-108.75 48.75-108.75 108.75L73.75 818.75c0 60 48.75 108.75 108.75 108.75l560.625 0L743.125 873.125 743.125 873.125zM793.125 569.375c5 3.125 10 4.375 15 4.375 8.75 0 17.5-4.375 22.5-11.875 8.125-12.5 5-29.375-7.5-37.5l-81.875-54.375c-10-6.875-23.125-5.625-31.875 1.875l0-0.625L580 575 388.125 442.5c0 0 0 0 0 0-2.5-1.25-5-2.5-7.5-3.125-0.625 0-1.875-0.625-2.5-1.25-2.5-0.625-5 0-6.875 0-1.25 0-2.5 0-3.125 0-1.25 0-2.5 1.25-3.125 1.25-2.5 0.625-4.375 1.25-6.25 2.5 0 0 0 0 0 0L194.375 551.25c-12.5 8.125-15.625 25-7.5 37.5 5 8.125 13.75 11.875 22.5 11.875 5 0 10.625-1.25 15-4.375l148.125-98.75 287.5 196.25c5 3.125 10 5 15.625 5 8.75 0 16.875-4.375 22.5-11.875 8.75-12.5 5.625-29.375-6.875-38.125l-63.75-43.125 101.25-80.625L793.125 569.375z" /></svg>',
+    "feedback-fab":
+      '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M579.887407 446.994963a32.274963 32.274963 0 0 1 0-45.511111l268.894815-268.894815c12.515556-12.515556 32.995556-12.515556 45.511111 0 12.515556 12.515556 12.515556 32.616296 0 45.131852l-268.894814 269.274074c-12.515556 12.515556-32.995556 12.515556-45.511112 0zM307.579259 319.981037a32.237037 32.237037 0 0 0-32.237037 32.237037c0 17.445926 14.411852 31.857778 32.237037 31.857778h191.146667a32.047407 32.047407 0 0 0 0-64.094815h-191.146667z m0 320.208593h409.220741a32.047407 32.047407 0 0 0 0-64.094815H307.541333a32.237037 32.237037 0 0 0-32.237037 32.237037c0 17.445926 14.411852 31.857778 32.237037 31.857778zM947.730963 90.642963c10.24 5.688889 22.376296 5.688889 32.237037 0 10.24-5.688889 16.308148-16.308148 16.308148-27.685926 0-11.757037-6.068148-22.376296-16.308148-28.065185a32.57837 32.57837 0 0 0-32.237037 0c-9.860741 5.688889-15.928889 16.308148-15.928889 28.065185 0 11.377778 6.068148 21.997037 15.928889 27.685926z" /><path d="M222.01837 894.748444c-34.891852 0-63.715556-28.823704-63.715555-64.094814V191.981037c0-35.271111 28.823704-64.094815 63.715555-64.094815h482.417778a32.047407 32.047407 0 0 0-0.379259-64.094815h-477.866667c-70.542222 0-128.18963 57.647407-128.189629 128.18963v639.431111c0 70.542222 57.647407 128.18963 128.189629 128.18963h573.819259c70.542222 0 97.848889-57.647407 97.848889-128.18963v-444.871111c0.379259-0.758519 0.379259-1.517037 0.37926-2.275556a32.237037 32.237037 0 1 0-64.474074 0h-0.37926v446.388149c0 35.271111-28.823704 64.094815-64.094815 64.094814H222.01837z" /></svg>',
     close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg>',
     trash:
       '<svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M800 384C782.08 384 768 398.08 768 416L768 832c0 35.2-28.8 64-64 64l-64 0L640 416C640 398.08 625.92 384 608 384 590.08 384 576 398.08 576 416L576 896 448 896 448 416C448 398.08 433.92 384 416 384 398.08 384 384 398.08 384 416L384 896 320 896c-35.2 0-64-28.8-64-64L256 416C256 398.08 241.92 384 224 384 206.08 384 192 398.08 192 416L192 832c0 70.4 57.6 128 128 128l384 0c70.4 0 128-57.6 128-128L832 416C832 398.08 817.92 384 800 384zM864 256l-704 0C142.08 256 128 270.08 128 288 128 305.92 142.08 320 160 320l704 0C881.92 320 896 305.92 896 288 896 270.08 881.92 256 864 256zM352 192l320 0C689.92 192 704 177.92 704 160 704 142.08 689.92 128 672 128l-320 0C334.08 128 320 142.08 320 160 320 177.92 334.08 192 352 192z" /></svg>',
