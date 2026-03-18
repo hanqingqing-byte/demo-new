@@ -77,7 +77,7 @@ async function handleGetDemo(env, demoId) {
 }
 
 async function handleCreateDemo(env, request) {
-  assertEnv(env);
+  assertStorageEnv(env);
   const body = await readJson(request);
   const title = String(body.title || "").trim();
   if (!title) {
@@ -295,7 +295,7 @@ async function getDemo(env, demoId) {
 }
 
 async function supabaseRest(env, pathname, options = {}, extraQuery = "") {
-  assertEnv(env);
+  assertCoreEnv(env);
   const url = `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/${pathname}${buildQuerySuffix(pathname, extraQuery)}`;
   const response = await fetch(url, {
     method: options.method || "GET",
@@ -330,6 +330,7 @@ function buildQuerySuffix(pathname, extraQuery) {
 }
 
 async function uploadDataUrlImage(env, dataUrl, demoId, suffix) {
+  assertStorageEnv(env);
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
     return null;
   }
@@ -369,6 +370,7 @@ async function uploadDataUrlImage(env, dataUrl, demoId, suffix) {
 }
 
 async function deletePublicImage(env, imageUrl) {
+  assertStorageEnv(env);
   const objectPath = extractObjectPath(env, imageUrl);
   if (!objectPath) {
     return null;
@@ -514,7 +516,13 @@ function jsonResponse(status, payload) {
   });
 }
 
-function assertEnv(env) {
+function assertCoreEnv(env) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing required Supabase environment variables");
+  }
+}
+
+function assertStorageEnv(env) {
   if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY || !env?.SUPABASE_BUCKET) {
     throw new Error("Missing required Supabase environment variables");
   }
