@@ -815,6 +815,7 @@ function handleInput(event) {
     const demoId = form.dataset.demoId;
     const draft = getFeedbackDraft(demoId);
     draft[target.name] = target.value;
+    render();
   }
 }
 
