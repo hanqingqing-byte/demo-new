@@ -43,7 +43,8 @@ http://127.0.0.1:4173
 2. 进入 `Workers & Pages`。
 3. 选择 `Create application` -> `Pages`。
 4. 连接你的 GitHub 仓库 `demo-new`。
-5. Build 设置保持默认即可。
+5. `Build command` 填 `npm run build`。
+6. `Build output directory` 填 `dist`。
 6. 在环境变量里填：
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
