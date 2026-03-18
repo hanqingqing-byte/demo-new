@@ -43,7 +43,7 @@ http://127.0.0.1:4173
 2. 进入 `Workers & Pages`。
 3. 选择 `Create application` -> `Pages`。
 4. 连接你的 GitHub 仓库 `demo-new`。
-5. `Build command` 填 `npm run build`。
+5. `Build command` 填 `npm run build`，或者保持默认但确保会生成 `dist/`。
 6. `Build output directory` 填 `dist`。
 6. 在环境变量里填：
    - `SUPABASE_URL`
@@ -51,6 +51,8 @@ http://127.0.0.1:4173
    - `SUPABASE_BUCKET`
    - `SUPABASE_PUBLIC_URL`
 7. 部署完成后，Cloudflare 会给你一个线上域名。
+
+仓库根目录里也放了 [wrangler.jsonc](/Users/hanqingqing/.codex/worktrees/a58a/评估/wrangler.jsonc)，用于显式告诉 Cloudflare Pages 输出目录是 `dist`。
 
 ### 本地运行
 
