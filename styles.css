@@ -860,8 +860,8 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
   background: color-mix(in oklch, var(--card) 92%, white);
   color: color-mix(in oklch, var(--foreground) 82%, var(--brand-700));
@@ -903,7 +903,26 @@ img {
 
 .upload-bottom-button {
   width: 100%;
+  margin-top: 0;
+}
+
+.upload-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upload-filled .upload-action-row {
   margin-top: auto;
+  padding-top: 12px;
+}
+
+.upload-empty .upload-action-row {
+  margin-top: 12px;
+}
+
+.upload-action-row-empty {
+  margin-top: 12px;
 }
 
 .gallery-scroll {
@@ -1178,8 +1197,8 @@ img {
   border: 0;
   background: transparent;
   padding: 0;
-  width: calc(100% + 32px);
-  margin-inline: -16px;
+  width: 100%;
+  margin-inline: 0;
 }
 
 .feedback-marquee-track {
@@ -1197,6 +1216,15 @@ img {
   gap: 10px;
   flex: 0 0 auto;
   padding-right: 0;
+}
+
+.feedback-marquee.is-static .feedback-marquee-track {
+  animation: none;
+  width: 100%;
+}
+
+.feedback-marquee.is-static .feedback-marquee-group[aria-hidden="true"] {
+  display: none;
 }
 
 .feedback-pill {
@@ -1548,11 +1576,21 @@ img {
 }
 
 @media (max-width: 720px) {
+  body.route-share {
+    overflow: hidden;
+  }
+
+  body.route-share .app-shell {
+    padding-bottom: 0;
+  }
+
   .share-page {
     max-width: 100vw;
     gap: 0;
     width: calc(100% + 24px);
-    margin: -20px -12px -48px;
+    margin: -20px -12px 0;
+    height: 100svh;
+    overflow: hidden;
   }
 
   .app-shell {
@@ -1599,18 +1637,19 @@ img {
   .mobile-scheme-stage {
     display: block;
     position: relative;
-    min-height: 100vh;
-    padding-bottom: 84px;
-    background: #0b0d12;
+    height: 100%;
+    padding-bottom: 0;
+    background: #fff;
   }
 
   .mobile-scheme-scroll {
     display: flex;
     overflow-x: auto;
-    overflow-y: visible;
+    overflow-y: hidden;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    height: 100%;
   }
 
   .mobile-scheme-scroll::-webkit-scrollbar {
@@ -1621,30 +1660,38 @@ img {
     display: block;
     flex: 0 0 100vw;
     width: 100vw;
+    height: 100%;
     scroll-snap-align: start;
-    background: #0b0d12;
+    background: #fff;
   }
 
   .mobile-scheme-btn {
     display: block;
     position: relative;
     width: 100%;
+    height: 100%;
+    overflow: hidden;
     padding: 0;
     border: 0;
     background: transparent;
   }
 
   .mobile-scheme-btn img {
+    --mobile-share-top-crop: 92px;
     width: 100vw;
-    height: auto;
+    height: calc(100% + var(--mobile-share-top-crop));
     display: block;
+    object-fit: cover;
+    object-position: center top;
+    transform: translateY(calc(-1 * var(--mobile-share-top-crop)));
+    background: #fff;
   }
 
   .mobile-scheme-indicator {
     display: inline-flex;
     position: fixed;
     left: 50%;
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    bottom: calc(6px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     z-index: 56;
     border-radius: 999px;
@@ -1661,18 +1708,26 @@ img {
   .mobile-feedback-fab {
     position: fixed;
     right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    bottom: calc(52px + env(safe-area-inset-bottom));
     z-index: 55;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 50px;
-    height: 50px;
+    width: 54px;
+    height: 54px;
     border-radius: 999px;
     border: 1px solid color-mix(in oklch, var(--primary) 26%, var(--border));
     background: #fff;
     color: color-mix(in oklch, var(--text-secondary) 88%, var(--primary));
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+    box-shadow:
+      0 14px 28px rgba(15, 23, 42, 0.24),
+      0 2px 6px rgba(15, 23, 42, 0.18);
+  }
+
+  .mobile-feedback-fab .icon {
+    width: 26px;
+    height: 26px;
+    font-weight: 700;
   }
 
   .mobile-feedback-backdrop {

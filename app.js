@@ -175,6 +175,7 @@ function render() {
     return;
   }
   const route = getRoute();
+  document.body.classList.toggle("route-share", route.name === "share");
   const routeKey = `${route.name}:${route.id || ""}`;
   ui.pageEnter = ui.lastRouteKey !== routeKey;
   ui.lastRouteKey = routeKey;
@@ -195,6 +196,7 @@ function render() {
   `;
   syncGalleryProgress();
   syncMobileSchemeScroll();
+  syncFeedbackMarquee();
 }
 
 function pageClass(extra = "") {
@@ -366,7 +368,10 @@ function renderCreatePage() {
                       ${ui.draft.images.map(renderDraftImage).join("")}
                     </div>
                   </div>
-                  <label class="button button-outline button-large upload-bottom-button" for="file-input">选择文件</label>
+                  <div class="upload-action-row">
+                    <label class="button button-outline button-large upload-bottom-button" for="file-input">选择文件</label>
+                    <label class="button button-outline button-large upload-bottom-button" for="folder-input">选择文件夹</label>
+                  </div>
                 </div>
               `
               : `
@@ -374,12 +379,16 @@ function renderCreatePage() {
                   <div>
                     <div class="upload-icon">${renderIcon("upload-board")}</div>
                     <div class="panel-title">上传Demo图片</div>
-                    <label class="button button-outline button-large" for="file-input" style="margin-top: 12px;">选择文件</label>
+                    <div class="upload-action-row upload-action-row-empty">
+                      <label class="button button-outline button-large" for="file-input">选择文件</label>
+                      <label class="button button-outline button-large" for="folder-input">选择文件夹</label>
+                    </div>
                   </div>
                 </div>
               `
           }
           <input class="sr-only" id="file-input" type="file" accept="image/*" multiple />
+          <input class="sr-only" id="folder-input" type="file" accept="image/*" multiple webkitdirectory directory />
         </aside>
       </section>
 
@@ -402,7 +411,7 @@ function renderDraftImage(image, index) {
         <img src="${escapeAttr(image)}" alt="上传图片 ${index + 1}" />
       </button>
       <div class="thumb-toolbar">
-        <button class="thumb-delete" data-action="remove-image" data-index="${index}" title="删除图片">${renderIcon("close")}</button>
+        <button class="thumb-delete" data-action="remove-image" data-index="${index}" title="删除图片">${renderIcon("trash")}</button>
       </div>
     </div>
   `;
@@ -466,7 +475,7 @@ function renderSharePage(demoId) {
           })
           .join("")}
         </div>
-        <div class="mobile-scheme-indicator">方案${ui.galleryIndex + 1}/${gallery.length}</div>
+        <div class="mobile-scheme-indicator">${ui.galleryIndex + 1}/${gallery.length}</div>
       </section>
 
       <form class="feedback-form share-feedback-form" id="feedback-form" data-demo-id="${escapeAttr(demo.id)}">
@@ -873,10 +882,10 @@ function handleInput(event) {
 
 async function handleChange(event) {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement) || target.id !== "file-input") {
+  if (!(target instanceof HTMLInputElement) || !["file-input", "folder-input"].includes(target.id)) {
     return;
   }
-  const files = [...(target.files || [])];
+  const files = [...(target.files || [])].filter((file) => file.type.startsWith("image/"));
   if (!files.length) {
     return;
   }
@@ -934,7 +943,7 @@ function handleScroll(event) {
   );
   const indicator = document.querySelector(".mobile-scheme-indicator");
   if (indicator) {
-    indicator.textContent = `方案${ui.galleryIndex + 1}/${mobileScroller.children.length}`;
+    indicator.textContent = `${ui.galleryIndex + 1}/${mobileScroller.children.length}`;
   }
 }
 
@@ -1312,8 +1321,20 @@ function syncMobileSchemeScroll() {
   const total = scroller.children.length || 1;
   const indicator = document.querySelector(".mobile-scheme-indicator");
   if (indicator) {
-    indicator.textContent = `方案${clamp(ui.galleryIndex + 1, 1, total)}/${total}`;
+    indicator.textContent = `${clamp(ui.galleryIndex + 1, 1, total)}/${total}`;
   }
+}
+
+function syncFeedbackMarquee() {
+  const marquee = document.querySelector(".feedback-marquee");
+  const track = marquee?.querySelector(".feedback-marquee-track");
+  const group = track?.querySelector(".feedback-marquee-group");
+  const clone = track?.querySelector('.feedback-marquee-group[aria-hidden="true"]');
+  if (!marquee || !track || !group || !clone) {
+    return;
+  }
+  const shouldScroll = group.scrollWidth > marquee.clientWidth;
+  marquee.classList.toggle("is-static", !shouldScroll);
 }
 
 function renderIcon(name) {
