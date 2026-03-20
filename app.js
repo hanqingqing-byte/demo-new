@@ -6,6 +6,7 @@ const app = document.querySelector("#app");
 const ui = {
   draft: createEmptyDraft(),
   feedbackDrafts: {},
+  feedbackSubmitting: {},
   modal: null,
   lightbox: null,
   toast: null,
@@ -39,6 +40,7 @@ document.addEventListener("dragenter", handleDragEnter);
 document.addEventListener("dragleave", handleDragLeave);
 document.addEventListener("scroll", handleScroll, true);
 document.addEventListener("pointerdown", handlePointerDown);
+document.addEventListener("keydown", handleKeydown);
 
 if (location.hash && location.hash.length > 1) {
   const hashPath = location.hash.slice(1);
@@ -134,6 +136,7 @@ function makeSampleImage(label, start, end) {
 
 function getRoute() {
   const parts = location.pathname.split("/").filter(Boolean);
+  const searchParams = new URLSearchParams(location.search);
 
   if (parts[0] === "new") {
     return { name: "new" };
@@ -142,7 +145,11 @@ function getRoute() {
     return { name: "share", id: decodeURIComponent(parts[1]) };
   }
   if (parts[0] === "feedback" && parts[1]) {
-    return { name: "feedback", id: decodeURIComponent(parts[1]) };
+    return {
+      name: "feedback",
+      id: decodeURIComponent(parts[1]),
+      focusFeedbackId: searchParams.get("focus") || "",
+    };
   }
   return { name: "home" };
 }
@@ -202,7 +209,7 @@ function renderPage(route) {
     return renderSharePage(route.id);
   }
   if (route.name === "feedback") {
-    return renderFeedbackPage(route.id);
+    return renderFeedbackPage(route.id, route.focusFeedbackId || "");
   }
   return renderDashboard();
 }
@@ -212,6 +219,7 @@ function renderDashboard() {
   const weeklyFeedbackCount = state.feedback.filter((item) => {
     return Date.now() - Date.parse(item.createdAt) <= 7 * 24 * 60 * 60 * 1000;
   }).length;
+  const latestFeedback = [...state.feedback].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 10);
 
   return `
     <main class="${pageClass("stack-24")}">
@@ -226,14 +234,18 @@ function renderDashboard() {
             <h1 class="hero-headline">反馈管理</h1>
           </div>
         </div>
-        <div class="stats-grid">
-          <article class="stat-card">
-            <span class="stat-label">进行中的 Demo</span>
+        <div class="stats-grid dashboard-stats">
+          <article class="stat-card stat-card-compact">
+            <span class="stat-label">进行中的反馈</span>
             <strong class="stat-value">${demos.length}</strong>
           </article>
-          <article class="stat-card">
-            <span class="stat-label">本周新增反馈</span>
+          <article class="stat-card stat-card-compact">
+            <span class="stat-label">新反馈</span>
             <strong class="stat-value">${weeklyFeedbackCount} 条</strong>
+          </article>
+          <article class="stat-card stat-card-overview">
+            <span class="stat-label">反馈内容一览</span>
+            ${renderFeedbackMarquee(latestFeedback)}
           </article>
         </div>
       </section>
@@ -272,6 +284,7 @@ function renderDemoCard(demo) {
             <div>
               <h3 class="demo-title">${escapeHtml(demo.title)}</h3>
               <p class="card-meta">关联模块：${escapeHtml(demo.module || "未填写")}</p>
+              <p class="card-meta card-meta-tight">方案说明：</p>
             </div>
             <button class="button button-ghost button-icon delete-icon-btn" title="删除 Demo" data-action="delete-demo" data-demo-id="${escapeAttr(demo.id)}">${renderIcon("trash")}</button>
           </div>
@@ -401,7 +414,8 @@ function renderSharePage(demoId) {
     return renderMissing("这个 Demo 不存在，可能已经被删除。");
   }
   const feedbackDraft = getFeedbackDraft(demo.id);
-  const canSubmitFeedback = feedbackDraft.mis.trim() && feedbackDraft.text.trim();
+  const feedbackSubmitting = Boolean(ui.feedbackSubmitting[demo.id]);
+  const canSubmitFeedback = feedbackDraft.mis.trim() && feedbackDraft.text.trim() && !feedbackSubmitting;
 
   const gallery = demo.images.length ? demo.images : [makeSampleImage("00", "#efefef", "#dfdfdf")];
   const progressWidth = `${((ui.galleryIndex + 1) / gallery.length) * 100}%`;
@@ -459,15 +473,15 @@ function renderSharePage(demoId) {
         <h2 class="panel-title">请提交你的建议：</h2>
         <div class="field">
           <label for="mis-input">MIS号</label>
-          <input class="input" id="mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" />
+          <input class="input" id="mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" ${feedbackSubmitting ? "disabled" : ""} />
         </div>
         <div class="field">
           <label for="feedback-text">反馈内容</label>
-          <textarea class="textarea" id="feedback-text" name="text" placeholder="请写下你的建议、疑问或感受">${escapeHtml(feedbackDraft.text)}</textarea>
+          <textarea class="textarea" id="feedback-text" name="text" placeholder="请写下你的建议、疑问或感受" ${feedbackSubmitting ? "disabled" : ""}>${escapeHtml(feedbackDraft.text)}</textarea>
         </div>
         <div class="form-actions">
           <div class="helper-text">建议会立即回收到设计师后台，不会出现在公开页上。</div>
-          <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
+          <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"} data-loading="${feedbackSubmitting ? "true" : "false"}">${feedbackSubmitting ? '<span class="button-spinner"></span>提交中' : "提交反馈"}</button>
         </div>
       </form>
 
@@ -482,14 +496,14 @@ function renderSharePage(demoId) {
             <h2 class="panel-title">请提交你的建议：</h2>
             <div class="field">
               <label for="mobile-mis-input">MIS号</label>
-              <input class="input" id="mobile-mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" />
+              <input class="input" id="mobile-mis-input" name="mis" placeholder="请输入你的昵称" value="${escapeAttr(feedbackDraft.mis)}" ${feedbackSubmitting ? "disabled" : ""} />
             </div>
             <div class="field">
               <label for="mobile-feedback-text">反馈内容</label>
-              <textarea class="textarea" id="mobile-feedback-text" name="text" placeholder="请写下你的建议、疑问或感受">${escapeHtml(feedbackDraft.text)}</textarea>
+              <textarea class="textarea" id="mobile-feedback-text" name="text" placeholder="请写下你的建议、疑问或感受" ${feedbackSubmitting ? "disabled" : ""}>${escapeHtml(feedbackDraft.text)}</textarea>
             </div>
             <div class="form-actions">
-              <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"}>提交反馈</button>
+              <button class="button button-primary" type="submit" ${canSubmitFeedback ? "" : "disabled"} data-loading="${feedbackSubmitting ? "true" : "false"}">${feedbackSubmitting ? '<span class="button-spinner"></span>提交中' : "提交反馈"}</button>
             </div>
           </form>
         </div>
@@ -498,13 +512,24 @@ function renderSharePage(demoId) {
   `;
 }
 
-function renderFeedbackPage(demoId) {
+function renderFeedbackPage(demoId, focusFeedbackId = "") {
   const demo = getDemo(demoId);
   if (!demo) {
     return renderMissing("这个 Demo 不存在，可能已经被删除。");
   }
 
   const feedback = getFeedbackForDemo(demo.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  if (focusFeedbackId) {
+    feedback.sort((a, b) => {
+      if (a.id === focusFeedbackId) {
+        return -1;
+      }
+      if (b.id === focusFeedbackId) {
+        return 1;
+      }
+      return 0;
+    });
+  }
 
   return `
     <main class="${pageClass("stack-24")}">
@@ -546,16 +571,12 @@ function renderFeedbackPage(demoId) {
               <span class="feedback-summary-label">创建时间</span>
               <strong class="feedback-summary-value">${formatDate(demo.createdAt)}</strong>
             </div>
-            <div class="feedback-summary-item">
-              <span class="feedback-summary-label">最近分享</span>
-              <strong class="feedback-summary-value">${formatDate(demo.updatedAt)}</strong>
-            </div>
           </div>
         </div>
 
         ${
           feedback.length
-            ? feedback.map(renderFeedbackItem).join("")
+            ? feedback.map((item, index) => renderFeedbackItem(item, index === 0 && item.id === focusFeedbackId)).join("")
             : `<div class="feedback-empty">还没有收到反馈。把分享链接发出去后，大家提交的建议会出现在这里。</div>`
         }
       </section>
@@ -563,9 +584,9 @@ function renderFeedbackPage(demoId) {
   `;
 }
 
-function renderFeedbackItem(item) {
+function renderFeedbackItem(item, pinned = false) {
   return `
-    <article class="feedback-item">
+    <article class="feedback-item ${pinned ? "is-pinned" : ""}">
       <div class="feedback-row">
         <h3 class="feedback-name">${escapeHtml(item.mis)}${item.role ? ` · ${escapeHtml(item.role)}` : ""}</h3>
         ${item.isNew ? `<span class="feedback-badge">NEW</span>` : ""}
@@ -573,6 +594,31 @@ function renderFeedbackItem(item) {
       <p class="feedback-item-body">${escapeHtml(item.text)}</p>
       <span class="feedback-time">${escapeHtml(item.device)} · ${formatDateTime(item.createdAt)}</span>
     </article>
+  `;
+}
+
+function renderFeedbackMarquee(feedbackItems) {
+  if (!feedbackItems.length) {
+    return `<div class="feedback-marquee feedback-marquee-empty"><span class="feedback-pill"><span class="feedback-pill-title">暂无项目</span><span class="feedback-pill-text">暂无新增反馈</span></span></div>`;
+  }
+  const pills = feedbackItems
+    .map((item) => {
+      const demoTitle = getDemo(item.demoId)?.title || "未命名项目";
+      return `
+        <button class="feedback-pill" data-action="open-feedback-pill" data-demo-id="${escapeAttr(item.demoId)}" data-feedback-id="${escapeAttr(item.id)}" title="查看该条反馈">
+          <span class="feedback-pill-title">${escapeHtml(demoTitle)}</span>
+          <span class="feedback-pill-text">${escapeHtml(item.text)}</span>
+        </button>
+      `;
+    })
+    .join("");
+  return `
+    <div class="feedback-marquee" aria-label="最新反馈滚动条">
+      <div class="feedback-marquee-track">
+        <div class="feedback-marquee-group">${pills}</div>
+        <div class="feedback-marquee-group" aria-hidden="true">${pills}</div>
+      </div>
+    </div>
   `;
 }
 
@@ -729,6 +775,16 @@ async function handleClick(event) {
     navigate(`/feedback/${encodeURIComponent(trigger.dataset.demoId)}`);
     return;
   }
+  if (action === "open-feedback-pill") {
+    const demoId = trigger.dataset.demoId;
+    const feedbackId = trigger.dataset.feedbackId;
+    if (!demoId || !feedbackId) {
+      return;
+    }
+    await markFeedbackRead(demoId);
+    navigate(`/feedback/${encodeURIComponent(demoId)}?focus=${encodeURIComponent(feedbackId)}`);
+    return;
+  }
   if (action === "select-gallery") {
     ui.galleryIndex = Number(trigger.dataset.index) || 0;
     const card = trigger.closest(".gallery-card");
@@ -790,11 +846,7 @@ async function handleSubmit(event) {
   if (event.target.id === "feedback-form" || event.target.id === "mobile-feedback-form") {
     event.preventDefault();
     const source = event.target.id === "mobile-feedback-form" ? "mobile" : "desktop";
-    const submitted = await submitFeedback(new FormData(event.target), event.target.dataset.demoId, source);
-    if (submitted && source === "mobile") {
-      ui.mobileFeedbackOpen = false;
-      render();
-    }
+    await submitFeedback(new FormData(event.target), event.target.dataset.demoId, source);
   }
 }
 
@@ -987,6 +1039,13 @@ async function submitFeedback(formData, demoId, source = "desktop") {
     return false;
   }
 
+  if (ui.feedbackSubmitting[demoId]) {
+    return false;
+  }
+
+  ui.feedbackSubmitting[demoId] = true;
+  render();
+
   try {
     const result = await apiRequest(`/api/demos/${encodeURIComponent(demoId)}/feedback`, {
       method: "POST",
@@ -1004,13 +1063,18 @@ async function submitFeedback(formData, demoId, source = "desktop") {
         demo.updatedAt = result.demo.updatedAt;
       }
       ui.feedbackDrafts[demoId] = createEmptyFeedbackDraft();
-      ui.mobileFeedbackOpen = false;
+      if (source === "mobile") {
+        ui.mobileFeedbackOpen = false;
+      }
       render();
       showToast(source === "mobile" ? "提交成功" : "反馈已提交");
       return true;
     }
   } catch (error) {
     showToast(error.message || "提交失败，请稍后再试。");
+  } finally {
+    delete ui.feedbackSubmitting[demoId];
+    render();
   }
   return false;
 }
@@ -1193,6 +1257,26 @@ function handlePointerDown(event) {
   ripple.style.top = `${event.clientY - rect.top}px`;
   button.appendChild(ripple);
   window.setTimeout(() => ripple.remove(), 700);
+}
+
+function handleKeydown(event) {
+  if (event.key !== "Escape") {
+    return;
+  }
+  if (ui.lightbox) {
+    ui.lightbox = null;
+    render();
+    return;
+  }
+  if (ui.modal) {
+    ui.modal = null;
+    render();
+    return;
+  }
+  if (ui.mobileFeedbackOpen) {
+    ui.mobileFeedbackOpen = false;
+    render();
+  }
 }
 
 function syncGalleryProgress() {
