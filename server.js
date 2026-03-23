@@ -557,7 +557,7 @@ async function saveDataUrlImage(dataUrl, demoDir, suffix) {
   const buffer = isBase64 ? Buffer.from(payload, "base64") : Buffer.from(decodeURIComponent(payload), "utf8");
 
   if (REMOTE_ENABLED) {
-    const objectPath = `${path.basename(demoDir)}/${filename}`;
+    const objectPath = `${toStoragePathSegment(path.basename(demoDir))}/${filename}`;
     const uploadUrl = `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1/object/${encodeURIComponent(SUPABASE_BUCKET)}/${objectPath
       .split("/")
       .map(encodeURIComponent)
@@ -582,6 +582,30 @@ async function saveDataUrlImage(dataUrl, demoDir, suffix) {
   const filePath = path.join(demoDir, filename);
   await fs.writeFile(filePath, buffer);
   return `/uploads/${path.basename(demoDir)}/${filename}`;
+}
+
+function toStoragePathSegment(value) {
+  const raw = String(value || "").trim();
+  const ascii = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (ascii) {
+    return ascii;
+  }
+  const bytes = Buffer.from(raw || crypto.randomUUID(), "utf8");
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+    if (hex.length >= 24) {
+      break;
+    }
+  }
+  if (hex) {
+    return `demo-${hex}`;
+  }
+  return `demo-${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
 }
 
 async function readJson(req) {

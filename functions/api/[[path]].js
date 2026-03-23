@@ -343,7 +343,7 @@ async function uploadDataUrlImage(env, dataUrl, demoId, suffix) {
   const payload = match[4];
   const extension = MIME_MAP[mime] || ".bin";
   const fileName = `${suffix}${extension}`;
-  const objectPath = `${demoId}/${fileName}`;
+  const objectPath = `${toStoragePathSegment(demoId)}/${fileName}`;
   const bytes = isBase64 ? base64ToBytes(payload) : new TextEncoder().encode(decodeURIComponent(payload));
   const url = `${env.SUPABASE_URL.replace(/\/$/, "")}/storage/v1/object/${encodeURIComponent(env.SUPABASE_BUCKET)}/${objectPath
     .split("/")
@@ -479,6 +479,30 @@ function ensureUniqueDemoId(baseId, existingIds) {
     suffix += 1;
   }
   return id;
+}
+
+function toStoragePathSegment(value) {
+  const raw = String(value || "").trim();
+  const ascii = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (ascii) {
+    return ascii;
+  }
+  const bytes = new TextEncoder().encode(raw || crypto.randomUUID());
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+    if (hex.length >= 24) {
+      break;
+    }
+  }
+  if (hex) {
+    return `demo-${hex}`;
+  }
+  return `demo-${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
 }
 
 function normalizeSegments(pathValue) {
