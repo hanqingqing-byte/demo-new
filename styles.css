@@ -1413,11 +1413,8 @@ img {
 }
 
 .icon-feedback-fab svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.2;
+  fill: currentColor;
+  stroke: none;
 }
 
 .icon-upload-board {
@@ -1589,6 +1586,7 @@ img {
 
   body.route-share .app-shell {
     padding-bottom: 0;
+    background: transparent;
   }
 
   .share-page {
@@ -1646,7 +1644,7 @@ img {
     position: relative;
     height: 100%;
     padding-bottom: 0;
-    background: #000;
+    background: transparent;
   }
 
   .mobile-scheme-scroll {
@@ -1679,19 +1677,18 @@ img {
     position: relative;
     width: 100%;
     min-height: 100%;
-    overflow: hidden;
+    overflow: visible;
     padding: 0;
     border: 0;
     background: #000;
   }
 
   .mobile-scheme-btn img {
-    --mobile-share-top-crop: 92px;
     width: 100vw;
     height: auto;
     max-width: 100%;
     display: block;
-    margin-top: calc(-1 * var(--mobile-share-top-crop));
+    margin-top: 0;
     background: #000;
   }
 
@@ -1703,7 +1700,7 @@ img {
     display: inline-flex;
     position: fixed;
     left: 50%;
-    bottom: calc(24px + env(safe-area-inset-bottom));
+    bottom: calc(36px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     z-index: 56;
     border-radius: 999px;
@@ -1737,8 +1734,8 @@ img {
   }
 
   .mobile-feedback-fab .icon {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
   }
 
   .mobile-feedback-backdrop {
