@@ -1732,6 +1732,7 @@ img {
     font-weight: 560;
     letter-spacing: 0.02em;
     pointer-events: none;
+    transition: opacity 0.2s var(--ease-out-quart);
   }
 
   .mobile-feedback-fab {
@@ -1751,6 +1752,9 @@ img {
     box-shadow:
       0 14px 28px rgba(15, 23, 42, 0.24),
       0 2px 6px rgba(15, 23, 42, 0.18);
+    transition:
+      opacity 0.2s var(--ease-out-quart),
+      transform 0.2s var(--ease-out-quart);
   }
 
   .mobile-feedback-fab .icon {
@@ -1798,6 +1802,17 @@ img {
     box-shadow: 0 -12px 24px rgba(15, 23, 42, 0.16);
   }
 
+  body.route-share.mobile-feedback-open .mobile-feedback-fab {
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+  }
+
+  body.route-share.mobile-feedback-open .mobile-scheme-indicator {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .mobile-sheet-close {
     position: absolute;
     top: 10px;
@@ -1820,7 +1835,7 @@ img {
 
   .mobile-feedback-form .panel-title {
     margin: 0 0 12px;
-    padding-right: 42px;
+    padding-right: 0;
     font-size: 21px;
     line-height: 1.25;
   }
@@ -1849,6 +1864,12 @@ img {
 
   .mobile-feedback-form .form-actions {
     margin-top: 14px;
-    justify-content: flex-end;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .mobile-feedback-form .form-actions .button.button-primary {
+    width: 100%;
+    min-height: 48px;
   }
 }

@@ -176,6 +176,7 @@ function render() {
   }
   const route = getRoute();
   document.body.classList.toggle("route-share", route.name === "share");
+  document.body.classList.toggle("mobile-feedback-open", route.name === "share" && ui.mobileFeedbackOpen);
   const routeKey = `${route.name}:${route.id || ""}`;
   ui.pageEnter = ui.lastRouteKey !== routeKey;
   ui.lastRouteKey = routeKey;
@@ -465,9 +466,9 @@ function renderSharePage(demoId) {
           .map((image, index) => {
             return `
               <article class="mobile-scheme-frame">
-                <button class="mobile-scheme-btn" data-action="open-image" data-src="${escapeAttr(image)}" data-alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图">
+                <div class="mobile-scheme-btn" aria-label="${escapeAttr(demo.title)} 第 ${index + 1} 张图">
                   <img src="${escapeAttr(image)}" alt="${escapeAttr(demo.title)} 第 ${index + 1} 张图" />
-                </button>
+                </div>
               </article>
             `;
           })
@@ -499,7 +500,6 @@ function renderSharePage(demoId) {
       <div class="mobile-feedback-backdrop ${ui.mobileFeedbackOpen ? "is-open" : ""}" data-action="close-mobile-feedback">
         <div class="mobile-feedback-sheet ${ui.mobileFeedbackOpen ? "is-open" : ""}">
           <form class="feedback-form mobile-feedback-form" id="mobile-feedback-form" data-demo-id="${escapeAttr(demo.id)}">
-            <button class="mobile-sheet-close" type="button" data-action="close-mobile-feedback" aria-label="关闭反馈面板">${renderIcon("close")}</button>
             <h2 class="panel-title">请提交你的建议：</h2>
             <div class="field">
               <label for="mobile-mis-input">MIS号</label>
